@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CAP-Spec | Cold Atmospheric Plasma Analyzer</title>
+<style>
+  :root {
+    --bg:      #0f0618;
+    --surface: #1e0d2e;
+    --card:    #2a1040;
+    --accent:  #9b59b6;
+    --accent2: #6c3483;
+    --glow:    #c39bd3;
+    --text:    #f0e6ff;
+    --muted:   #9980aa;
+    --success: #2ecc71;
+    --warn:    #f39c12;
+    --danger:  #e74c3c;
+    --border:  #3d1f5a;
+    --radius:  10px;
+    --OH: #3498db; --N2: #e67e22; --N2plus: #e74c3c;
+    --O: #2ecc71;  --He: #9b59b6; --Ha: #f39c12;
+    --NO: #1abc9c; --Ar: #e91e63;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: linear-gradient(135deg, var(--surface) 0%, #13032a 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 60px; position: sticky; top: 0; z-index: 100;
+    backdrop-filter: blur(10px);
+  }
+  .logo { font-size: 1.4rem; font-weight: 700; color: var(--glow); letter-spacing: 1px; }
+  .logo span { color: var(--accent); }
+  nav { display: flex; gap: 0.5rem; }
+  .nav-btn {
+    background: none; border: 1px solid var(--border);
+    color: var(--muted); padding: 6px 14px; border-radius: 6px;
+    cursor: pointer; font-size: 0.85rem; transition: all 0.2s;
+  }
+  .nav-btn:hover, .nav-btn.active {
+    background: var(--accent2); color: var(--text); border-color: var(--accent);
+  }
+  #userInfo { font-size: 0.8rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  #logoutBtn { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 0.8rem; }
+
+  /* ── Layout ── */
+  main { max-width: 1300px; margin: 0 auto; padding: 2rem; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.5rem;
+  }
+  .card-title {
+    font-size: 0.95rem; font-weight: 600; color: var(--glow);
+    margin-bottom: 1rem; display: flex; align-items: center; gap: 8px;
+  }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  .grid3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; }
+  .grid4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; }
+
+  /* ── Buttons ── */
+  .btn {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+    color: #fff; border: none; padding: 10px 22px; border-radius: 7px;
+    cursor: pointer; font-size: 0.9rem; font-weight: 600;
+    transition: opacity 0.2s; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-sm { padding: 6px 14px; font-size: 0.8rem; }
+  .btn-outline {
+    background: none; border: 1px solid var(--accent); color: var(--accent);
+  }
+  .btn-danger { background: linear-gradient(135deg, var(--danger), #922b21); }
+
+  /* ── Form elements ── */
+  input, select, textarea {
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); padding: 10px 14px; border-radius: 7px;
+    width: 100%; font-size: 0.9rem; outline: none; transition: border-color 0.2s;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  label { font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; display: block; }
+  .form-group { margin-bottom: 1rem; }
+
+  /* ── Upload zone ── */
+  #dropzone {
+    border: 2px dashed var(--border); border-radius: var(--radius);
+    padding: 3rem; text-align: center; cursor: pointer;
+    transition: all 0.2s; background: var(--surface);
+  }
+  #dropzone:hover, #dropzone.drag { border-color: var(--accent); background: #1f0d35; }
+  #dropzone .icon { font-size: 3rem; margin-bottom: 0.5rem; }
+  #dropzone .hint { color: var(--muted); font-size: 0.85rem; margin-top: 0.5rem; }
+  #fileInput { display: none; }
+
+  /* ── Status badge ── */
+  .badge {
+    padding: 3px 10px; border-radius: 20px; font-size: 0.75rem;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .badge-pending   { background: #2c2c00; color: var(--warn); }
+  .badge-complete  { background: #0a2e1a; color: var(--success); }
+  .badge-failed    { background: #2e0a0a; color: var(--danger); }
+  .badge-running   { background: #1a0a2e; color: var(--accent); }
+
+  /* ── Progress steps ── */
+  .pipeline-steps {
+    display: flex; gap: 0; margin: 1rem 0;
+  }
+  .step {
+    flex: 1; padding: 10px; text-align: center; font-size: 0.75rem;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--muted); transition: all 0.3s;
+  }
+  .step:first-child { border-radius: 7px 0 0 7px; }
+  .step:last-child  { border-radius: 0 7px 7px 0; }
+  .step.done { background: #0a2e1a; color: var(--success); border-color: var(--success); }
+  .step.active { background: #1a0a2e; color: var(--accent); border-color: var(--accent); }
+  .step.failed { background: #2e0a0a; color: var(--danger); border-color: var(--danger); }
+
+  /* ── Stat tiles ── */
+  .stat-tile {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.2rem; text-align: center;
+  }
+  .stat-value { font-size: 1.6rem; font-weight: 700; color: var(--glow); }
+  .stat-label { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+  /* ── Species bar ── */
+  .species-bar { margin: 4px 0; }
+  .species-bar-label { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 2px; }
+  .bar-track { background: var(--surface); border-radius: 4px; height: 10px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+
+  /* ── Chart img ── */
+  .chart-img { width: 100%; border-radius: 8px; background: #1a0a20; }
+
+  /* ── Score gauge ── */
+  .score-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 0.85rem; }
+  .score-name { width: 140px; color: var(--muted); flex-shrink: 0; text-transform: capitalize; }
+  .score-track { flex: 1; background: var(--surface); border-radius: 4px; height: 8px; }
+  .score-fill { height: 100%; border-radius: 4px; }
+  .score-val { width: 40px; text-align: right; color: var(--text); }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th { background: var(--surface); color: var(--muted); padding: 8px 10px; text-align: left;
+       font-weight: 600; border-bottom: 1px solid var(--border); }
+  td { padding: 7px 10px; border-bottom: 1px solid #1f0f30; }
+  tr:hover td { background: #1c0c2a; }
+
+  /* ── Alert ── */
+  .alert { border-radius: 7px; padding: 10px 14px; font-size: 0.85rem; margin-bottom: 1rem; }
+  .alert-info   { background: #0a1a2e; border: 1px solid #1a3a5a; color: #7fb3d3; }
+  .alert-error  { background: #2e0a0a; border: 1px solid #5a1a1a; color: #e59898; }
+  .alert-ok     { background: #0a2e1a; border: 1px solid #1a5a3a; color: #7ec8a0; }
+
+  /* ── Login overlay ── */
+  #loginOverlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    display: flex; align-items: center; justify-content: center; z-index: 999;
+  }
+  .login-box {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 2.5rem; width: 380px;
+  }
+  .login-box h2 { color: var(--glow); margin-bottom: 0.4rem; }
+  .login-box p  { color: var(--muted); font-size: 0.85rem; margin-bottom: 1.5rem; }
+
+  /* ── Spinner ── */
+  .spinner {
+    width: 20px; height: 20px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Recommendation ── */
+  .rec-item { padding: 7px 10px; background: var(--surface); border-radius: 6px;
+              margin-bottom: 5px; font-size: 0.85rem; border-left: 3px solid var(--accent); }
+  .rec-item.warn { border-left-color: var(--warn); }
+
+  #toast {
+    position: fixed; bottom: 24px; right: 24px; background: var(--card);
+    border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px;
+    font-size: 0.85rem; color: var(--text); z-index: 9999;
+    transform: translateY(80px); opacity: 0; transition: all 0.3s;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+
+  @media (max-width: 800px) {
+    .grid2, .grid3, .grid4 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Login overlay -->
+<div id="loginOverlay">
+  <div class="login-box">
+    <h2>CAP<span style="color:var(--accent)">-Spec</span></h2>
+    <p>Cold Atmospheric Plasma Analyzer — sign in to continue</p>
+    <div class="form-group">
+      <label>Username</label>
+      <input id="loginUser" type="text" placeholder="admin" value="admin"/>
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input id="loginPass" type="password" placeholder="secret" value="secret"/>
+    </div>
+    <div id="loginError" class="alert alert-error" style="display:none"></div>
+    <button class="btn" style="width:100%" onclick="login()">Sign In</button>
+  </div>
+</div>
+
+<header>
+  <div class="logo">CAP<span>-Spec</span></div>
+  <nav>
+    <button class="nav-btn active" onclick="showPage('analyze')">Analyze</button>
+    <button class="nav-btn" onclick="showPage('jobs')">Jobs</button>
+    <button class="nav-btn" onclick="showPage('admin')">Admin</button>
+  </nav>
+  <div id="userInfo">
+    <span id="userLabel"></span>
+    <button id="logoutBtn" onclick="logout()">Sign out</button>
+  </div>
+</header>
+
+<main>
+
+<!-- ── Analyze Page ────────────────────────────────────────────────── -->
+<div id="analyzePage" class="page active">
+  <div class="grid2">
+    <div>
+      <div class="card">
+        <div class="card-title">📡 Upload Spectrum</div>
+        <div id="dropzone" onclick="document.getElementById('fileInput').click()"
+             ondragover="event.preventDefault();this.classList.add('drag')"
+             ondragleave="this.classList.remove('drag')"
+             ondrop="handleDrop(event)">
+          <div class="icon">🔬</div>
+          <div>Drop your spectrum file here or click to browse</div>
+          <div class="hint">Supports CSV, TSV, TXT, DAT — two-column: wavelength (nm), intensity</div>
+        </div>
+        <input id="fileInput" type="file" accept=".csv,.tsv,.txt,.dat"
+               onchange="handleFileSelect(event)"/>
+        <br/>
+        <div class="grid2" style="margin-top:0.8rem">
+          <div class="form-group">
+            <label>Carrier Gas</label>
+            <select id="gasSelect">
+              <option value="helium">Helium</option>
+              <option value="argon">Argon</option>
+              <option value="nitrogen">Nitrogen</option>
+              <option value="air">Air</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Device ID (optional)</label>
+            <input id="deviceId" type="text" placeholder="e.g. kINPen-01"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes (optional)</label>
+          <input id="notes" type="text" placeholder="e.g. 3 slm He, 1W power, tip position"/>
+        </div>
+        <button class="btn" id="uploadBtn" onclick="uploadSpectrum()" disabled>
+          <span>Analyze Spectrum</span>
+        </button>
+        <div id="uploadStatus" style="margin-top:0.8rem"></div>
+      </div>
+
+      <!-- Pipeline progress -->
+      <div class="card" id="pipelineCard" style="display:none">
+        <div class="card-title">⚙️ Analysis Pipeline</div>
+        <div class="pipeline-steps">
+          <div class="step" id="step-ingested">Ingestion</div>
+          <div class="step" id="step-preprocessed">Preprocessing</div>
+          <div class="step" id="step-features_extracted">Feature Extraction</div>
+          <div class="step" id="step-modeled">Modeling</div>
+          <div class="step" id="step-complete">Report</div>
+        </div>
+        <div id="pipelineMsg" style="font-size:0.8rem;color:var(--muted);margin-top:0.5rem"></div>
+      </div>
+    </div>
+
+    <!-- Live result panel -->
+    <div id="resultPanel" style="display:none">
+      <div class="card">
+        <div class="card-title">🔭 Plasma State</div>
+        <div class="grid2">
+          <div class="stat-tile">
+            <div class="stat-value" id="plasmaState">—</div>
+            <div class="stat-label">Classification</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-value" id="stateConf">—</div>
+            <div class="stat-label">Confidence</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-value" id="tRot">—</div>
+            <div class="stat-label">T_rot (K)</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-value" id="overallScore">—</div>
+            <div class="stat-label">Overall Score</div>
+          </div>
+        </div>
+        <div id="stateDesc" style="margin-top:0.8rem;font-size:0.82rem;color:var(--muted)"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">⚗️ Species Concentrations</div>
+        <div id="speciesBars"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div id="chartsSection" style="display:none">
+    <div class="card">
+      <div class="card-title">📊 Full Emission Spectrum</div>
+      <img id="spectrumChart" class="chart-img" alt="Spectrum"/>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">🧬 Biomedical Profile</div>
+        <img id="bioChart" class="chart-img" alt="Biomedical"/>
+      </div>
+      <div class="card">
+        <div class="card-title">🏔️ Top Peaks</div>
+        <img id="peakChart" class="chart-img" alt="Peaks"/>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">💊 Recommendations</div>
+      <div id="recommendations"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📈 Biomedical Scores</div>
+      <div id="scoreGauges"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔬 Identified Emission Lines</div>
+      <table id="linesTable">
+        <thead><tr><th>Species</th><th>Transition</th><th>λ (nm)</th><th>Intensity</th><th>FWHM (nm)</th></tr></thead>
+        <tbody id="linesBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── Jobs Page ──────────────────────────────────────────────────── -->
+<div id="jobsPage" class="page">
+  <div class="card">
+    <div class="card-title" style="justify-content:space-between">
+      <span>📋 Analysis Jobs</span>
+      <button class="btn btn-sm btn-outline" onclick="loadJobs()">↻ Refresh</button>
+    </div>
+    <table>
+      <thead><tr><th>Job ID</th><th>File</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody id="jobsTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Admin Page ─────────────────────────────────────────────────── -->
+<div id="adminPage" class="page">
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">📊 Endpoint Usage (last 24h)</div>
+      <div id="statsTable"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔑 User Management</div>
+      <div class="form-group"><label>Username</label><input id="newUser" type="text"/></div>
+      <div class="form-group"><label>Email</label><input id="newEmail" type="email"/></div>
+      <div class="form-group"><label>Password</label><input id="newPass" type="password"/></div>
+      <div class="form-group">
+        <label>Role</label>
+        <select id="newRole">
+          <option value="researcher">Researcher</option>
+          <option value="viewer">Viewer</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <button class="btn" onclick="createUser()">Create User</button>
+      <div id="userMsg" style="margin-top:0.8rem"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">🏥 Service Health</div>
+    <div id="healthGrid" class="grid3"></div>
+  </div>
+</div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────
+const API   = 'http://localhost:8000';  // Gateway URL
+let token   = localStorage.getItem('cap_token') || '';
+let username= localStorage.getItem('cap_user')  || '';
+let role    = localStorage.getItem('cap_role')  || '';
+let selectedFile = null;
+let currentJobId = null;
+
+// ── Auth ───────────────────────────────────────────────────────────
+async function login() {
+  const u = document.getElementById('loginUser').value;
+  const p = document.getElementById('loginPass').value;
+  try {
+    const fd = new FormData();
+    fd.append('username', u); fd.append('password', p);
+    const r = await fetch(`${API}/auth/token`, { method: 'POST', body: fd });
+    if (!r.ok) throw new Error((await r.json()).detail || 'Login failed');
+    const d = await r.json();
+    token = d.access_token; username = d.username; role = d.role;
+    localStorage.setItem('cap_token', token);
+    localStorage.setItem('cap_user', username);
+    localStorage.setItem('cap_role', role);
+    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('userLabel').textContent = `${username} (${role})`;
+  } catch(e) {
+    const el = document.getElementById('loginError');
+    el.style.display = 'block'; el.textContent = e.message;
+  }
+}
+
+function logout() {
+  localStorage.clear(); token=''; location.reload();
+}
+
+// ── Navigation ─────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(name + 'Page').classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'jobs')  loadJobs();
+  if (name === 'admin') { loadStats(); loadHealth(); }
+}
+
+// ── API helper ─────────────────────────────────────────────────────
+async function api(method, path, body=null) {
+  const opts = {
+    method,
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(`${API}${path}`, opts);
+  if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.detail || r.statusText); }
+  return r.json();
+}
+
+function toast(msg, color='#9b59b6') {
+  const t = document.getElementById('toast');
+  t.style.borderLeftColor = color;
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── Upload ─────────────────────────────────────────────────────────
+function handleFileSelect(e) {
+  selectedFile = e.target.files[0];
+  if (selectedFile) updateDropzone();
+}
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.remove('drag');
+  selectedFile = e.dataTransfer.files[0];
+  if (selectedFile) updateDropzone();
+}
+function updateDropzone() {
+  const dz = document.getElementById('dropzone');
+  dz.innerHTML = `<div class="icon">✅</div><div><b>${selectedFile.name}</b></div>
+    <div class="hint">${(selectedFile.size/1024).toFixed(1)} KB — click to change</div>`;
+  document.getElementById('uploadBtn').disabled = false;
+}
+
+async function uploadSpectrum() {
+  if (!selectedFile) return;
+  const btn = document.getElementById('uploadBtn');
+  btn.disabled = true;
+  setStatus('uploadStatus', 'Uploading…', 'info');
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+  const gas = document.getElementById('gasSelect').value;
+  const dev = document.getElementById('deviceId').value;
+  const notes = document.getElementById('notes').value;
+  const url = `${API}/ingest/upload?gas=${gas}${dev?'&device_id='+encodeURIComponent(dev):''}${notes?'&notes='+encodeURIComponent(notes):''}`;
+
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: fd,
+    });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.detail); }
+    const d = await r.json();
+    currentJobId = d.job_id;
+    setStatus('uploadStatus', `Job created: ${d.job_id.slice(0,8)}…`, 'ok');
+    showPipeline();
+    runPipeline(d.job_id);
+  } catch(e) {
+    setStatus('uploadStatus', e.message, 'error');
+    btn.disabled = false;
+  }
+}
+
+function setStatus(id, msg, type) {
+  const el = document.getElementById(id);
+  const cls = { info:'alert-info', ok:'alert-ok', error:'alert-error' }[type] || 'alert-info';
+  el.innerHTML = `<div class="alert ${cls}">${msg}</div>`;
+}
+
+// ── Pipeline ───────────────────────────────────────────────────────
+const PIPELINE_STEPS = ['ingested','preprocessed','features_extracted','modeled','complete'];
+
+function showPipeline() {
+  document.getElementById('pipelineCard').style.display = 'block';
+  PIPELINE_STEPS.forEach(s => {
+    const el = document.getElementById('step-'+s);
+    if (el) el.className = 'step';
+  });
+}
+
+function markStep(status) {
+  PIPELINE_STEPS.forEach((s, i) => {
+    const el = document.getElementById('step-'+s);
+    if (!el) return;
+    const idx = PIPELINE_STEPS.indexOf(status);
+    if (i < idx) el.className = 'step done';
+    else if (i === idx) el.className = 'step active';
+  });
+}
+
+async function runPipeline(jobId) {
+  document.getElementById('pipelineMsg').textContent = 'Running full analysis pipeline…';
+  try {
+    const result = await api('POST', `/analyze/${jobId}`);
+    markStep('complete');
+    document.getElementById('pipelineMsg').textContent = '✅ Analysis complete!';
+    displayResults(result, jobId);
+    toast('Analysis complete!', '#2ecc71');
+  } catch(e) {
+    document.getElementById('pipelineMsg').textContent = '❌ ' + e.message;
+    toast('Pipeline failed: ' + e.message, '#e74c3c');
+  }
+}
+
+// ── Results display ────────────────────────────────────────────────
+async function displayResults(data, jobId) {
+  document.getElementById('resultPanel').style.display = 'block';
+  document.getElementById('chartsSection').style.display = 'block';
+
+  const pc  = data.plasma_characterization || {};
+  const bio = data.biomedical || {};
+  const sp  = data.species || {};
+
+  document.getElementById('plasmaState').textContent  = (pc.state || '—').toUpperCase();
+  document.getElementById('stateConf').textContent    = pc.confidence ? (pc.confidence*100).toFixed(0)+'%' : '—';
+  document.getElementById('tRot').textContent         = data.temperature?.rotational_K
+                                                         ? Math.round(data.temperature.rotational_K) : '—';
+  document.getElementById('overallScore').textContent = bio.overall_suitability
+                                                         ? (bio.overall_suitability*100).toFixed(0)+'%' : '—';
+  document.getElementById('stateDesc').textContent    = pc.description || '';
+
+  // Species bars
+  const sp_colors = {OH:'var(--OH)',N2:'var(--N2)','N2+':'var(--N2plus)',
+                     O:'var(--O)',He:'var(--He)',Ha:'var(--Ha)',NO:'var(--NO)',Ar:'var(--Ar)'};
+  const dominant = sp.dominant || [];
+  const bars = document.getElementById('speciesBars');
+  bars.innerHTML = dominant.map(d => `
+    <div class="species-bar">
+      <div class="species-bar-label">
+        <span style="color:${sp_colors[d.species]||'#fff'}">${d.species}</span>
+        <span>${d.percentage?.toFixed(1)}%</span>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${d.percentage}%;background:${sp_colors[d.species]||'#9b59b6'}"></div>
+      </div>
+    </div>`).join('');
+
+  // Biomedical scores
+  const scores = bio.scores || {};
+  const scoreColors = { sterilization:'#3498db', wound_healing:'#2ecc71',
+                        anti_cancer:'#e74c3c',    thermal_safety:'#f39c12',
+                        uv_risk:'#e91e63' };
+  document.getElementById('scoreGauges').innerHTML = Object.entries(scores).map(([k,v]) => `
+    <div class="score-row">
+      <div class="score-name">${k.replace(/_/g,' ')}</div>
+      <div class="score-track">
+        <div class="score-fill" style="width:${v*100}%;background:${scoreColors[k]||'#9b59b6'}"></div>
+      </div>
+      <div class="score-val">${(v*100).toFixed(0)}%</div>
+    </div>`).join('');
+
+  // Recommendations
+  const recs = bio.recommendations || [];
+  document.getElementById('recommendations').innerHTML = recs.map(r =>
+    `<div class="rec-item ${r.startsWith('⚠')?'warn':''}">${r}</div>`).join('');
+
+  // Identified lines table
+  const lines = (sp.identified_lines || []).filter(l => l.detected);
+  const tbody = document.getElementById('linesBody');
+  tbody.innerHTML = lines.map(l => {
+    const fit = l.fit || {};
+    return `<tr>
+      <td style="color:${sp_colors[l.species]||'#fff'}">${l.species}</td>
+      <td>${l.transition}</td>
+      <td>${l.nominal_nm.toFixed(1)}</td>
+      <td>${(l.peak_intensity*100).toFixed(1)}%</td>
+      <td>${fit.fwhm_nm ? fit.fwhm_nm.toFixed(2) : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  // Load charts from reporting service
+  loadChart(jobId, 'spectrum',    'spectrumChart');
+  loadChart(jobId, 'biomedical',  'bioChart');
+  loadChart(jobId, 'peak_table',  'peakChart');
+}
+
+async function loadChart(jobId, chartName, imgId) {
+  try {
+    const r = await fetch(`${API}/report/${jobId}/chart/${chartName}`,
+                          { headers: { 'Authorization': `Bearer ${token}` }});
+    if (!r.ok) return;
+    const blob = await r.blob();
+    document.getElementById(imgId).src = URL.createObjectURL(blob);
+  } catch(e) { /* chart unavailable */ }
+}
+
+// ── Jobs page ──────────────────────────────────────────────────────
+async function loadJobs() {
+  try {
+    const jobs = await api('GET', '/ingest/jobs?limit=50');
+    const tbody = document.getElementById('jobsTableBody');
+    const stateClass = { complete:'badge-complete', failed:'badge-failed',
+                         pending:'badge-pending', ingested:'badge-running' };
+    tbody.innerHTML = jobs.map(j => `
+      <tr>
+        <td style="font-family:monospace;font-size:0.75rem">${j.id.slice(0,12)}…</td>
+        <td>${j.file_name || '—'}</td>
+        <td><span class="badge ${stateClass[j.status]||'badge-running'}">${j.status}</span></td>
+        <td>${new Date(j.created_at).toLocaleString()}</td>
+        <td>
+          ${j.status === 'complete'
+            ? `<button class="btn btn-sm btn-outline" onclick="viewReport('${j.id}')">View</button>`
+            : j.status === 'ingested'
+            ? `<button class="btn btn-sm" onclick="runPipelineFor('${j.id}')">Run</button>`
+            : ''}
+          <button class="btn btn-sm btn-danger" style="margin-left:4px"
+                  onclick="deleteJob('${j.id}')">✕</button>
+        </td>
+      </tr>`).join('');
+  } catch(e) { toast('Failed to load jobs', '#e74c3c'); }
+}
+
+async function deleteJob(id) {
+  if (!confirm('Delete job ' + id.slice(0,8) + '?')) return;
+  try {
+    await api('DELETE', `/ingest/job/${id}`);
+    toast('Job deleted'); loadJobs();
+  } catch(e) { toast(e.message, '#e74c3c'); }
+}
+
+async function viewReport(jobId) {
+  showPage({ target: document.querySelectorAll('.nav-btn')[0] });
+  document.querySelectorAll('.nav-btn')[0].classList.add('active');
+  try {
+    const report = await api('GET', `/report/report/${jobId}?include_charts=false`);
+    displayResults(report, jobId);
+    document.getElementById('pipelineCard').style.display = 'none';
+    document.getElementById('resultPanel').style.display = 'block';
+    document.getElementById('chartsSection').style.display = 'block';
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    document.getElementById('analyzePage').classList.add('active');
+  } catch(e) { toast('Could not load report: '+e.message, '#e74c3c'); }
+}
+
+async function runPipelineFor(jobId) {
+  currentJobId = jobId;
+  showPipeline();
+  runPipeline(jobId);
+  document.querySelectorAll('.nav-btn')[0].click();
+}
+
+// ── Admin page ────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const d = await api('GET', '/admin/stats?since_hours=24');
+    const rows = d.endpoints || [];
+    document.getElementById('statsTable').innerHTML = `
+      <table>
+        <thead><tr><th>Service</th><th>Endpoint</th><th>Calls</th><th>Avg ms</th><th>P95 ms</th><th>Errors</th></tr></thead>
+        <tbody>${rows.map(r => `
+          <tr>
+            <td>${r.service}</td><td style="font-family:monospace;font-size:0.75rem">${r.endpoint}</td>
+            <td>${r.total_calls}</td><td>${r.avg_response_ms}</td>
+            <td>${r.p95_ms || '—'}</td>
+            <td style="color:${r.error_rate_pct>5?'var(--danger)':'var(--success)'}">${r.error_rate_pct}%</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch(e) { document.getElementById('statsTable').innerHTML = '<div class="alert alert-error">'+e.message+'</div>'; }
+}
+
+async function loadHealth() {
+  try {
+    const d = await api('GET', '/health');
+    const services = d.services || {};
+    document.getElementById('healthGrid').innerHTML = Object.entries(services).map(([k,v]) => `
+      <div class="stat-tile">
+        <div class="stat-value" style="color:${v==='healthy'?'var(--success)':v==='degraded'?'var(--warn)':'var(--danger)'}">
+          ${v==='healthy'?'✅':v==='degraded'?'⚠️':'❌'}
+        </div>
+        <div class="stat-label">${k}</div>
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:2px">${v}</div>
+      </div>`).join('');
+  } catch(e) { /* */ }
+}
+
+async function createUser() {
+  try {
+    await api('POST', '/auth/register', {
+      username: document.getElementById('newUser').value,
+      email:    document.getElementById('newEmail').value,
+      password: document.getElementById('newPass').value,
+      role:     document.getElementById('newRole').value,
+    });
+    setStatus('userMsg', 'User created successfully', 'ok');
+  } catch(e) { setStatus('userMsg', e.message, 'error'); }
+}
+
+// ── Init ───────────────────────────────────────────────────────────
+if (token) {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('userLabel').textContent = `${username} (${role})`;
+}
+</script>
+</body>
+</html>

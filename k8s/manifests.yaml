@@ -1,0 +1,440 @@
+# ============================================================
+# CAP-Spec Kubernetes Manifests
+# Deploy with: kubectl apply -f k8s/
+# ============================================================
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: capspec
+
+---
+# ── Secrets ──────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Secret
+metadata:
+  name: capspec-secrets
+  namespace: capspec
+type: Opaque
+stringData:
+  SECRET_KEY:   "CHANGE_THIS_TO_A_RANDOM_32_CHAR_SECRET"
+  DB_PASSWORD:  "capspec"
+  S3_ACCESS_KEY: "capspec_admin"
+  S3_SECRET_KEY: "capspec_secret"
+
+---
+# ── ConfigMap ─────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: capspec-config
+  namespace: capspec
+data:
+  DATABASE_URL:  "postgresql://capspec:capspec@postgres-svc:5432/capspec"
+  S3_ENDPOINT:   "http://minio-svc:9000"
+  S3_BUCKET:     "capspec"
+  INGESTION_URL:  "http://ingestion-svc:8001"
+  PREPROCESS_URL: "http://preprocessing-svc:8002"
+  FEATURES_URL:   "http://feature-extraction-svc:8003"
+  MODELING_URL:   "http://modeling-svc:8004"
+  REPORTING_URL:  "http://reporting-svc:8005"
+
+---
+# ── PostgreSQL ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: capspec
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: postgres}
+  template:
+    metadata:
+      labels: {app: postgres}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - {name: POSTGRES_DB,       value: capspec}
+            - {name: POSTGRES_USER,     value: capspec}
+            - {name: POSTGRES_PASSWORD, value: capspec}
+          ports: [{containerPort: 5432}]
+          volumeMounts:
+            - {name: pg-data, mountPath: /var/lib/postgresql/data}
+            - {name: init-sql, mountPath: /docker-entrypoint-initdb.d}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "capspec"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: pg-data
+          persistentVolumeClaim: {claimName: postgres-pvc}
+        - name: init-sql
+          configMap: {name: postgres-init}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-svc
+  namespace: capspec
+spec:
+  selector: {app: postgres}
+  ports: [{port: 5432}]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: capspec
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: {storage: 5Gi}
+
+---
+# ── MinIO ─────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: capspec
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: minio}
+  template:
+    metadata:
+      labels: {app: minio}
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - {name: MINIO_ROOT_USER,     value: capspec_admin}
+            - {name: MINIO_ROOT_PASSWORD, value: capspec_secret}
+          ports:
+            - {containerPort: 9000}
+            - {containerPort: 9001}
+          volumeMounts:
+            - {name: minio-data, mountPath: /data}
+          readinessProbe:
+            httpGet: {path: /minio/health/ready, port: 9000}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: minio-data
+          persistentVolumeClaim: {claimName: minio-pvc}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-svc
+  namespace: capspec
+spec:
+  selector: {app: minio}
+  ports:
+    - {name: api,     port: 9000}
+    - {name: console, port: 9001}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+  namespace: capspec
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: {storage: 20Gi}
+
+---
+# ── Macro for each microservice ───────────────────────────────────────────────
+# Gateway
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: capspec
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: gateway}
+  template:
+    metadata:
+      labels: {app: gateway}
+    spec:
+      containers:
+        - name: gateway
+          image: capspec/gateway:latest
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8000}]
+          envFrom:
+            - configMapRef:  {name: capspec-config}
+            - secretRef:     {name: capspec-secrets}
+          env:
+            - {name: PORT, value: "8000"}
+            - {name: SERVICE_NAME, value: gateway}
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits:   {cpu: 500m, memory: 512Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-svc
+  namespace: capspec
+spec:
+  type: LoadBalancer
+  selector: {app: gateway}
+  ports: [{port: 80, targetPort: 8000}]
+
+---
+# Ingestion
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion
+  namespace: capspec
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: ingestion}
+  template:
+    metadata:
+      labels: {app: ingestion}
+    spec:
+      containers:
+        - name: ingestion
+          image: capspec/ingestion:latest
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8001}]
+          envFrom:
+            - configMapRef: {name: capspec-config}
+            - secretRef:    {name: capspec-secrets}
+          env: [{name: PORT, value: "8001"}, {name: SERVICE_NAME, value: ingestion}]
+          readinessProbe:
+            httpGet: {path: /health, port: 8001}
+            initialDelaySeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits:   {cpu: 500m, memory: 512Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingestion-svc
+  namespace: capspec
+spec:
+  selector: {app: ingestion}
+  ports: [{port: 8001}]
+
+---
+# Preprocessing
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: preprocessing
+  namespace: capspec
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: preprocessing}
+  template:
+    metadata:
+      labels: {app: preprocessing}
+    spec:
+      containers:
+        - name: preprocessing
+          image: capspec/preprocessing:latest
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8002}]
+          envFrom:
+            - configMapRef: {name: capspec-config}
+            - secretRef:    {name: capspec-secrets}
+          env: [{name: PORT, value: "8002"}, {name: SERVICE_NAME, value: preprocessing}]
+          readinessProbe:
+            httpGet: {path: /health, port: 8002}
+            initialDelaySeconds: 10
+          resources:
+            requests: {cpu: 200m, memory: 256Mi}
+            limits:   {cpu: 1000m, memory: 1Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: preprocessing-svc
+  namespace: capspec
+spec:
+  selector: {app: preprocessing}
+  ports: [{port: 8002}]
+
+---
+# Feature Extraction (CPU-heavy — more resources)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feature-extraction
+  namespace: capspec
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: feature-extraction}
+  template:
+    metadata:
+      labels: {app: feature-extraction}
+    spec:
+      containers:
+        - name: feature-extraction
+          image: capspec/feature-extraction:latest
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8003}]
+          envFrom:
+            - configMapRef: {name: capspec-config}
+            - secretRef:    {name: capspec-secrets}
+          env: [{name: PORT, value: "8003"}, {name: SERVICE_NAME, value: feature_extraction}]
+          readinessProbe:
+            httpGet: {path: /health, port: 8003}
+            initialDelaySeconds: 15
+          resources:
+            requests: {cpu: 500m, memory: 512Mi}
+            limits:   {cpu: 2000m, memory: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: feature-extraction-svc
+  namespace: capspec
+spec:
+  selector: {app: feature-extraction}
+  ports: [{port: 8003}]
+
+---
+# Modeling (most CPU-intensive)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: modeling
+  namespace: capspec
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: modeling}
+  template:
+    metadata:
+      labels: {app: modeling}
+    spec:
+      containers:
+        - name: modeling
+          image: capspec/modeling:latest
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8004}]
+          envFrom:
+            - configMapRef: {name: capspec-config}
+            - secretRef:    {name: capspec-secrets}
+          env: [{name: PORT, value: "8004"}, {name: SERVICE_NAME, value: modeling}]
+          readinessProbe:
+            httpGet: {path: /health, port: 8004}
+            initialDelaySeconds: 20
+          resources:
+            requests: {cpu: 500m, memory: 512Mi}
+            limits:   {cpu: 2000m, memory: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: modeling-svc
+  namespace: capspec
+spec:
+  selector: {app: modeling}
+  ports: [{port: 8004}]
+
+---
+# Reporting
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reporting
+  namespace: capspec
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: reporting}
+  template:
+    metadata:
+      labels: {app: reporting}
+    spec:
+      containers:
+        - name: reporting
+          image: capspec/reporting:latest
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8005}]
+          envFrom:
+            - configMapRef: {name: capspec-config}
+            - secretRef:    {name: capspec-secrets}
+          env: [{name: PORT, value: "8005"}, {name: SERVICE_NAME, value: reporting}]
+          readinessProbe:
+            httpGet: {path: /health, port: 8005}
+            initialDelaySeconds: 20
+          resources:
+            requests: {cpu: 300m, memory: 512Mi}
+            limits:   {cpu: 1500m, memory: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reporting-svc
+  namespace: capspec
+spec:
+  selector: {app: reporting}
+  ports: [{port: 8005}]
+
+---
+# ── HorizontalPodAutoscalers ──────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: feature-extraction-hpa
+  namespace: capspec
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: feature-extraction
+  minReplicas: 1
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: modeling-hpa
+  namespace: capspec
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: modeling
+  minReplicas: 1
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

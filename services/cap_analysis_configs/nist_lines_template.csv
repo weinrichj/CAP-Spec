@@ -1,0 +1,4 @@
+wavelength_nm,species,element,ion_stage,transition,rel_intensity
+486.13,H I,H,I,Balmer H-beta,1.0000e+08
+434.05,H I,H,I,Balmer H-gamma,4.4100e+07
+407.59,O II,O,II,3p-3s transition,2.0000e+07

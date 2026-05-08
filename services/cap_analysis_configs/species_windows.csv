@@ -1,0 +1,12 @@
+species,start_nm,end_nm,kind
+NO_gamma,220,250,band
+OH_309,306,312,line
+N2_315,313,318,band
+N2_337,334,340,line
+N2_357,354,360,line
+N2_380,377,383,line
+N2plus_391,388,394,line
+N2plus_427,424,430,line
+Hgamma_434,431,437,line
+Hbeta_486,483,489,line
+UVC_continuum,200,280,band

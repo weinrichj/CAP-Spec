@@ -1,0 +1,164 @@
+version: "3.9"
+
+# ============================================================
+# CAP-Spec – Full Stack Docker Compose
+# ============================================================
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  networks:
+    - capspec-net
+  environment: &common-env
+    DATABASE_URL: postgresql://capspec:capspec@postgres:5432/capspec
+    S3_ENDPOINT:  http://minio:9000
+    S3_ACCESS_KEY: capspec_admin
+    S3_SECRET_KEY: capspec_secret
+    S3_BUCKET:    capspec
+    SECRET_KEY:   CHANGE_THIS_TO_A_RANDOM_SECRET_IN_PRODUCTION
+  depends_on:
+    postgres:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+
+# Shared build context for services that need analysis code
+x-analysis-build: &analysis-build
+  context: ./services
+  additional_contexts:
+    analysis: ./services/cap_analysis
+    configs:  ./services/cap_analysis_configs
+
+services:
+
+  # ── Infrastructure ───────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: capspec-postgres
+    restart: unless-stopped
+    networks: [capspec-net]
+    environment:
+      POSTGRES_DB:       capspec
+      POSTGRES_USER:     capspec
+      POSTGRES_PASSWORD: capspec
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U capspec"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: capspec-minio
+    restart: unless-stopped
+    networks: [capspec-net]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     capspec_admin
+      MINIO_ROOT_PASSWORD: capspec_secret
+    volumes:
+      - minio-data:/data
+    ports: ["9000:9000", "9001:9001"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Microservices ────────────────────────────────────────────────────────────
+
+  gateway:
+    <<: *service-defaults
+    build:
+      context: ./services/gateway
+    container_name: capspec-gateway
+    environment:
+      <<: *common-env
+      PORT: 8000
+      SERVICE_NAME: gateway
+      INGESTION_URL:  http://ingestion:8001
+      PREPROCESS_URL: http://preprocessing:8002
+      FEATURES_URL:   http://feature_extraction:8003
+      MODELING_URL:   http://modeling:8004
+      REPORTING_URL:  http://reporting:8005
+    ports: ["8000:8000"]
+
+  ingestion:
+    <<: *service-defaults
+    build:
+      context: ./services/ingestion
+    container_name: capspec-ingestion
+    environment:
+      <<: *common-env
+      PORT: 8001
+      SERVICE_NAME: ingestion
+    ports: ["8001:8001"]
+
+  preprocessing:
+    <<: *service-defaults
+    build:
+      context: ./services/preprocessing
+    container_name: capspec-preprocessing
+    environment:
+      <<: *common-env
+      PORT: 8002
+      SERVICE_NAME: preprocessing
+    ports: ["8002:8002"]
+
+  feature_extraction:
+    <<: *service-defaults
+    build:
+      context: ./services
+      dockerfile: feature_extraction/Dockerfile
+    container_name: capspec-features
+    environment:
+      <<: *common-env
+      PORT: 8003
+      SERVICE_NAME: feature_extraction
+    ports: ["8003:8003"]
+
+  modeling:
+    <<: *service-defaults
+    build:
+      context: ./services
+      dockerfile: modeling/Dockerfile
+    container_name: capspec-modeling
+    environment:
+      <<: *common-env
+      PORT: 8004
+      SERVICE_NAME: modeling
+    ports: ["8004:8004"]
+
+  reporting:
+    <<: *service-defaults
+    build:
+      context: ./services
+      dockerfile: reporting/Dockerfile
+    container_name: capspec-reporting
+    environment:
+      <<: *common-env
+      PORT: 8005
+      SERVICE_NAME: reporting
+    ports: ["8005:8005"]
+
+  frontend:
+    image: nginx:alpine
+    container_name: capspec-frontend
+    restart: unless-stopped
+    networks: [capspec-net]
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    ports: ["3000:80"]
+    depends_on: [gateway]
+
+volumes:
+  postgres-data:
+  minio-data:
+
+networks:
+  capspec-net:
+    driver: bridge
