@@ -3,7 +3,7 @@
 **Cold Atmospheric Plasma Spectral Analysis — Microservices Application**  
 CSC5201 Final Project | John Weinrich
 
-CAP-Spec is a microservices application for automated analysis of optical emission spectroscopy (OES) data from Cold Atmospheric Plasma (CAP) experiments. Users upload raw spectrum files and receive a complete analysis report: baseline-corrected spectra, identified chemical species, estimated plasma temperatures (rotational and vibrational), electron density, and reaction pathway summaries — all orchestrated through a REST API pipeline.
+CAP-Spec is a microservices application for automated analysis of optical emission spectroscopy (OES) data from Cold Atmospheric Plasma (CAP) experiments. Users upload raw spectrum files and receive a complete analysis report: baseline-corrected spectra, identified chemical species, estimated plasma temperatures (rotational and vibrational), electron density, and reaction pathway summaries; all orchestrated through a REST API pipeline.
 
 ---
 
@@ -222,62 +222,6 @@ Accepted extensions: `.csv`, `.tsv`, `.txt`, `.dat`. Maximum file size: 50 MB.
 
 ---
 
-## Load Testing
-
-The `scripts/load_test.py` script measures response latency under increasing concurrency.
-
-```bash
-pip install httpx
-
-# Benchmark individual endpoints at 1, 5, 10, 20 concurrent users
-python scripts/load_test.py --url http://localhost:8000 --users 1 5 10 20
-
-# Benchmark a specific endpoint
-python scripts/load_test.py --endpoint /health --requests 100
-
-# Run the full pipeline end-to-end
-python scripts/load_test.py --full-pipeline --spectrum path/to/spectrum.csv
-```
-
----
-
-## Kubernetes Deployment
-
-A complete manifest is at `k8s/manifests.yaml`. Before applying, push your images to a registry and update the `image:` fields in the manifest.
-
-```bash
-# Build and push (replace <registry> with your registry)
-docker build -t <registry>/capspec-gateway:latest  ./services/gateway
-docker build -t <registry>/capspec-ingestion:latest ./services/ingestion
-# ... repeat for all services
-
-docker push <registry>/capspec-gateway:latest
-# ...
-
-# Deploy
-kubectl apply -f k8s/manifests.yaml
-
-# Watch rollout
-kubectl rollout status deployment/capspec-gateway
-```
-
-See `DEPLOYMENT.md` for the complete Kubernetes guide.
-
----
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SECRET_KEY` | *(must set)* | JWT signing secret |
-| `TOKEN_EXPIRE_MIN` | `480` | Token lifetime in minutes |
-| `DATABASE_URL` | `postgresql://capspec:capspec@postgres:5432/capspec` | PostgreSQL connection string |
-| `S3_ENDPOINT` | `http://minio:9000` | Object storage endpoint |
-| `S3_ACCESS_KEY` | `capspec_admin` | Object storage access key |
-| `S3_SECRET_KEY` | `capspec_secret` | Object storage secret |
-| `S3_BUCKET` | `capspec` | Bucket name for spectrum files |
-| `MAX_FILE_MB` | `50` | Upload size limit |
-
 ---
 
 ## Project Structure
@@ -305,9 +249,3 @@ cap-spec/
     ├── cap_analysis_configs/   ← Species windows, excitation lines, etc.
     └── shims/                  ← No-op stubs for legacy import compatibility
 ```
-
----
-
-## License
-
-MIT
